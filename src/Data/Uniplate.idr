@@ -65,18 +65,17 @@ Traversable (Children repr) where
     traverse f (Two x y) = Two <$> traverse f x <*> traverse f y
 
 public export
-record Plate (repr : Repr) (from : Type) (to : Type) where
+record Plate (from : Type) (to : Type) where
     constructor MkPlate
+    {0 repr : Repr}
     cs : Children repr to
     gen : Children repr to -> from
 
 public export
 interface Uniplate ty where
-    ||| Get the representation of the children of a node
-    0 GetRepr : ty -> Repr
     ||| Get the direct children of a node
     ||| and a way to rebuild that node with modified children
-    uniplate : (x : ty) -> Plate (GetRepr x) ty ty
+    uniplate : (x : ty) -> Plate ty ty
 
     descend : (ty -> ty) -> ty -> ty
     descend f x =
@@ -90,8 +89,7 @@ interface Uniplate ty where
 
 public export
 interface Uniplate to => Biplate from to where
-    0 BiGetRepr : from -> Repr
-    biplate : (x : from) -> Plate (BiGetRepr x) from to
+    biplate : (x : from) -> Plate from to
 
     bidescend : (to -> to) -> from -> from
     bidescend f x =
@@ -109,12 +107,12 @@ children x = toList $ cs $ uniplate x
 
 ||| Start a new plate, not containing the target
 public export
-plate : from -> Plate RZero from to
+plate : from -> Plate from to
 plate x = MkPlate { cs = Zero, gen = \Zero => x}
 
 ||| The value to the right is the target
 public export
-(|*) : Plate l (to -> from) to -> to -> Plate (RTwo l ROne) from to
+(|*) : Plate (to -> from) to -> to -> Plate from to
 MkPlate cs gen |* x = MkPlate (Two cs (One x)) (\(Two cs (One x)) => gen cs x)
 
 ||| The value to the right contains the target
@@ -123,22 +121,22 @@ MkPlate cs gen |* x = MkPlate (Two cs (One x)) (\(Two cs (One x)) => gen cs x)
 public export %tcinline
 (|+) :
     Biplate item to =>
-    Plate l (item -> from) to ->
+    Plate (item -> from) to ->
     (x : item) ->
-    Plate (RTwo l (BiGetRepr {to} x)) from to
+    Plate from to
 MkPlate ls lgen |+ x =
     let MkPlate rs rgen = biplate x
      in MkPlate (Two ls rs) (\(Two ls rs) => lgen ls (rgen rs))
 
 ||| The value to the right does not contain the target
 public export
-(|-) : Plate repr (item -> from) to -> item -> Plate repr from to
+(|-) : Plate (item -> from) to -> item -> Plate from to
 MkPlate cs gen |- x = MkPlate cs (\cs => gen cs x)
 
 ||| Fused form of `plate f |* x`
 ||| This replaces an `RTwo RZero ROne` with `ROne`
 public export
-plateStar : (to -> from) -> to -> Plate ROne from to
+plateStar : (to -> from) -> to -> Plate from to
 plateStar f x = MkPlate (One x) (\(One x) => f x)
 
 ||| Fused form of `plate f |+ x`
@@ -146,7 +144,7 @@ plateStar f x = MkPlate (One x) (\(One x) => f x)
 ||| Note: due to https://github.com/idris-lang/Idris2/issues/2737,
 ||| you may need to use `assert_total`.
 public export %tcinline
-platePlus : Biplate item to => (item -> from) -> (x : item) -> Plate (BiGetRepr {to} x) from to
+platePlus : Biplate item to => (item -> from) -> (x : item) -> Plate from to
 platePlus f x =
     let MkPlate cs gen = biplate x
      in MkPlate cs (\cs => f (gen cs))
@@ -202,42 +200,28 @@ para f x = f x $ assert_total $ map (para f) $ children x
 
 public export
 [Id] Uniplate a where
-    GetRepr _ = ROne
     uniplate x = plateStar id x
 
 public export
 [FromUni] Uniplate a => Biplate a a where
-    BiGetRepr = GetRepr
     biplate = uniplate
 
 public export
 Uniplate (List a) where
-    GetRepr [] = RZero
-    GetRepr (_ :: _) = ROne
-
     uniplate [] = plate []
     uniplate (x :: xs) = plateStar (x ::) xs
 
 public export
 Biplate (List a) a using Id where
-    BiGetRepr [] = RZero
-    BiGetRepr (x :: xs) = RTwo ROne (BiGetRepr {to=a} xs)
-
     biplate [] = plate []
     biplate (x :: xs) = assert_total $ plateStar (::) x |+ xs
 
 public export
 Uniplate (SnocList a) where
-    GetRepr [<] = RZero
-    GetRepr (_ :< _) = ROne
-
     uniplate [<] = plate [<]
     uniplate (xs :< x) = plateStar (:< x) xs
 
 public export
 Biplate (SnocList a) a using Id where
-    BiGetRepr [<] = RZero
-    BiGetRepr (xs :< x) = RTwo (BiGetRepr {to=a} xs) ROne
-
     biplate [<] = plate [<]
     biplate (xs :< x) = assert_total $ platePlus (:<) xs |* x
