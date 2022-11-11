@@ -1,6 +1,7 @@
 module Data.Uniplate
 
-import Data.List.Quantifiers
+import Data.Vect
+import Data.List1
 
 %default total
 
@@ -149,6 +150,14 @@ platePlus f x =
     let MkPlate cs gen = biplate x
      in MkPlate cs (\cs => f (gen cs))
 
+||| Create a plate by providing a mapping to or from another type
+||| i.e. a profunctor on `Plate`
+public export
+plateVia : Biplate s to => (f : s -> t) -> (g : t -> s) -> t -> Plate t to
+plateVia f g x =
+    let MkPlate cs gen = biplate $ g x
+     in MkPlate cs (\cs => f (gen cs))
+
 ||| Get all children of a node, including the node itself
 ||| and non-direct descendents.
 public export
@@ -185,11 +194,6 @@ public export
 fixAdd : (a -> Maybe b) -> (a -> Maybe b) -> (a -> Maybe b)
 fixAdd f g x = f x <|> g x
 
-||| An expected property of `fixpoint`
-||| Note: this has not been implemented properly
-public export partial
-fixpointProp : Uniplate ty => (f : _) -> (x : ty) -> All (\node => f node === Nothing) (universe (fixpoint f x))
-
 ||| Perform a fold on a node and it's sub-nodes
 ||| This is a paramorphism
 public export
@@ -217,6 +221,11 @@ Biplate (List a) a using Id where
     biplate (x :: xs) = assert_total $ plateStar (::) x |+ xs
 
 public export
+Biplate (Maybe a) a using Id where
+    biplate Nothing = plate Nothing
+    biplate (Just x) = plateStar Just x
+
+public export
 Uniplate (SnocList a) where
     uniplate [<] = plate [<]
     uniplate (xs :< x) = plateStar (:< x) xs
@@ -225,3 +234,16 @@ public export
 Biplate (SnocList a) a using Id where
     biplate [<] = plate [<]
     biplate (xs :< x) = assert_total $ platePlus (:<) xs |* x
+
+public export
+Biplate (Vect len a) a using Id where
+    biplate [] = plate []
+    biplate (x :: xs) = plateStar (::) x |+ xs 
+
+public export
+Biplate (List1 a) a using Id where
+    biplate (x ::: xs) = plateStar (:::) x |+ xs
+
+public export
+Biplate String Char using Id where
+    biplate str = plateVia pack unpack str
