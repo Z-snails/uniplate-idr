@@ -210,6 +210,21 @@ public export
 transformM : Uniplate ty => Monad m => (ty -> m ty) -> ty -> m ty
 transformM f = assert_total (descendM (transformM f)) >=> f
 
+||| Get all children of a node, including non-direct descendents.
+public export
+biuniverse : Biplate from to => from -> List to
+biuniverse x = foldMap universe (biplate x).cs
+
+||| Apply a function to each sub-node of the target type
+public export
+bitransform : Biplate from to => (to -> to) -> from -> from
+bitransform f = bidescend (transform f)
+
+||| Apply a monadic function to each sub-node of the target type
+public export
+bitransformM : Biplate from to => Monad m => (to -> m to) -> from -> m from
+bitransformM f = bidescendM (transformM f)
+
 ||| Find the fixed point of a function applied to every sub-node of a node
 ||| This ensures there is nowhere in the node that can have the function applied
 ||| ie forall f, x. all (isNothing . f) (universe (fixpoint f x)) = True
