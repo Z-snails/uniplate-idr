@@ -7,6 +7,7 @@ import Data.List1
 
 infixl 3 |*
 infixl 3 |+
+infixl 3 ||+
 infixl 3 |-
 
 ||| How the children of a given node are represented
@@ -102,6 +103,30 @@ interface Uniplate to => Biplate from to where
         let MkPlate cs gen = biplate x
          in gen <$> traverse f cs
 
+compose : Biplate t a => Children r t -> Plate (Children r t) a
+compose Zero = MkPlate Zero (\Zero => Zero)
+compose (One x) =
+    let MkPlate cs gen = biplate x
+     in MkPlate cs (\cs => One (gen cs))
+compose (Two x y) =
+    let MkPlate xs genx = compose x
+        MkPlate ys geny = compose y
+     in MkPlate (Two xs ys) (\(Two xs ys) => Two (genx xs) (geny ys))
+
+public export
+[Compose] Biplate outer inner => Biplate inner to => Biplate outer to where
+    biplate x =
+        let MkPlate os geno = biplate {to = inner} x
+            MkPlate is geni = compose os
+         in MkPlate is (\is => geno (geni is))
+
+    bidescend f x =
+        let MkPlate cs gen = biplate @{Compose {outer, inner, to}} x
+         in gen (f <$> cs)
+    bidescendM f x =
+        let MkPlate cs gen = biplate @{Compose {outer, inner, to}} x
+         in gen <$> traverse f cs
+
 public export
 children : Uniplate ty => ty -> List ty
 children x = toList $ cs $ uniplate x
@@ -123,11 +148,22 @@ public export %tcinline
 (|+) :
     Biplate item to =>
     Plate (item -> from) to ->
-    (x : item) ->
+    item ->
     Plate from to
 MkPlate ls lgen |+ x =
     let MkPlate rs rgen = biplate x
      in MkPlate (Two ls rs) (\(Two ls rs) => lgen ls (rgen rs))
+
+||| The value to the right contains the target 2 'layers' down
+||| This is equivalent to `|+` using the `Compose` implementation of `Biplate`
+public export %tcinline
+(||+) :
+    Biplate outer inner =>
+    Biplate inner to =>
+    Plate (outer -> from) to ->
+    outer ->
+    Plate from to
+p ||+ x = (|+) @{Compose {outer, inner, to}} p x
 
 ||| The value to the right does not contain the target
 public export
@@ -141,7 +177,6 @@ plateStar : (to -> from) -> to -> Plate from to
 plateStar f x = MkPlate (One x) (\(One x) => f x)
 
 ||| Fused form of `plate f |+ x`
-||| This replaces an `RTwo RZero ROne` with `ROne`
 ||| Note: due to https://github.com/idris-lang/Idris2/issues/2737,
 ||| you may need to use `assert_total`.
 public export %tcinline
