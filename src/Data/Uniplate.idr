@@ -158,12 +158,13 @@ MkPlate ls lgen |+ x =
 ||| This is equivalent to `|+` using the `Compose` implementation of `Biplate`
 public export %tcinline
 (||+) :
-    Biplate outer inner =>
+    forall f.
+    Biplate (f inner) inner =>
     Biplate inner to =>
-    Plate (outer -> from) to ->
-    outer ->
+    Plate (f inner -> from) to ->
+    f inner ->
     Plate from to
-p ||+ x = (|+) @{Compose {outer, inner, to}} p x
+p ||+ x = (|+) @{Compose {outer = f inner, inner, to}} p x
 
 ||| The value to the right does not contain the target
 public export
